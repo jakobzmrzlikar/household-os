@@ -1,9 +1,13 @@
 """Composition root: build the FastAPI app and wire the DI container."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-from app.adapter.input.web.routers import health
+from app.adapter.input.web.routers import capture, health
 from app.infrastructure.container import Container
+from app.infrastructure.database import create_schema
 
 
 def create_app() -> FastAPI:
@@ -17,8 +21,15 @@ def create_app() -> FastAPI:
     """
     container = Container()
 
-    app = FastAPI(title="household-os", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        # Schema bootstrap in lieu of Alembic migrations (not initialized yet).
+        await create_schema(container.engine())
+        yield
+
+    app = FastAPI(title="household-os", version="0.1.0", lifespan=lifespan)
     app.state.container = container
     app.include_router(health.router)
+    app.include_router(capture.router)
 
     return app

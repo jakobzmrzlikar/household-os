@@ -15,9 +15,12 @@ dependencies = [
     "attrs>=24.1",
     "pydantic>=2.13",
     "pydantic-ai>=2.0",
-    "sqlalchemy>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.13",
     "dependency-injector>=4.49.1",
+    "aiosqlite>=0.22.1",
+    "python-multipart>=0.0.32",
+    "pydantic-settings>=2.14.2",
 ]
 
 [dependency-groups]
@@ -52,6 +55,8 @@ extend-immutable-calls = [
     "fastapi.Query",
     "fastapi.Path",
     "fastapi.Body",
+    "fastapi.Form",
+    "fastapi.File",
 ]
 
 [tool.pytest.ini_options]

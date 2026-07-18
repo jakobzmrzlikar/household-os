@@ -1,0 +1,18 @@
+### Create capture (photo receipt) -> { id: string, kind: "photo" | "audio" }
+POST {{baseUrl}}/create_capture
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="household_id"
+
+demo-household
+--WebAppBoundary
+Content-Disposition: form-data; name="member_id"
+
+demo-member
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="receipt.jpg"
+Content-Type: image/jpeg
+
+fake-jpeg-bytes-for-smoke-testing
+--WebAppBoundary--

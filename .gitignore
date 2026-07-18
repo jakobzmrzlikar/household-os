@@ -235,3 +235,6 @@ bench/build-android/
 
 # SQLite dev database
 *.db
+
+# Uploaded media captured via the create_capture command
+backend/uploads/
