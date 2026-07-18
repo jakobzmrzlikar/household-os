@@ -15,3 +15,11 @@ class CaptureRepositoryPort(Protocol):
         :param capture: The capture to persist.
         """
         ...
+
+    async def get(self, capture_id: str) -> Capture | None:
+        """Fetch a capture by its identifier.
+
+        :param capture_id: Identifier of the capture to fetch.
+        :return: The capture, or ``None`` when no capture has that id.
+        """
+        ...

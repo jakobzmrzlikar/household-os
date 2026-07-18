@@ -20,3 +20,15 @@ class MockMediaStorage(MediaStoragePort):
         name = f"{len(self.stored)}-{request.filename}"
         self.stored[name] = request.content
         return name
+
+    async def load(self, media_path: str) -> bytes:
+        """Read file content recorded in memory.
+
+        :param media_path: Storage path returned by ``store``.
+        :return: The raw file bytes.
+        :raises FileNotFoundError: When nothing was stored at the path.
+        """
+        try:
+            return self.stored[media_path]
+        except KeyError as error:
+            raise FileNotFoundError(media_path) from error

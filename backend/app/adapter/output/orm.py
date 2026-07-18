@@ -20,3 +20,20 @@ class CaptureRecord(Base):
     kind: Mapped[str]
     media_path: Mapped[str]
     created_at: Mapped[datetime]
+
+
+class PendingCommandRecord(Base):
+    """Relational record for a PendingCommand entity."""
+
+    __tablename__ = "pending_commands"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    household_id: Mapped[str] = mapped_column(index=True)
+    capture_id: Mapped[str]
+    verb: Mapped[str]
+    # JSON-encoded verb arguments; parsed back into a dict at the repository.
+    payload: Mapped[str]
+    agent_name: Mapped[str]
+    model_id: Mapped[str]
+    status: Mapped[str] = mapped_column(index=True)
+    created_at: Mapped[datetime]

@@ -1,0 +1,2 @@
+### List pending commands -> { commands: ApiPendingCommand[] }
+GET {{baseUrl}}/list_pending_commands?household_id=demo-household

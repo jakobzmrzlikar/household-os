@@ -4,7 +4,7 @@ from attrs import define
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapter.output.orm import CaptureRecord
-from app.domain.models.capture import Capture
+from app.domain.models.capture import Capture, CaptureKind
 from app.domain.ports.capture_repository import CaptureRepositoryPort
 
 
@@ -22,6 +22,16 @@ class SqlAlchemyCaptureRepository(CaptureRepositoryPort):
         async with self.session_factory() as session, session.begin():
             session.add(_to_record(capture))
 
+    async def get(self, capture_id: str) -> Capture | None:
+        """Fetch a capture row by primary key.
+
+        :param capture_id: Identifier of the capture to fetch.
+        :return: The capture, or ``None`` when no row has that id.
+        """
+        async with self.session_factory() as session:
+            record = await session.get(CaptureRecord, capture_id)
+        return None if record is None else _to_domain(record)
+
 
 def _to_record(capture: Capture) -> CaptureRecord:
     """Map a domain capture to its relational record.
@@ -36,4 +46,20 @@ def _to_record(capture: Capture) -> CaptureRecord:
         kind=capture.kind.value,
         media_path=capture.media_path,
         created_at=capture.created_at,
+    )
+
+
+def _to_domain(record: CaptureRecord) -> Capture:
+    """Map a relational record back to its domain capture.
+
+    :param record: The ORM record to map.
+    :return: The domain capture.
+    """
+    return Capture(
+        id=record.id,
+        household_id=record.household_id,
+        member_id=record.member_id,
+        kind=CaptureKind(record.kind),
+        media_path=record.media_path,
+        created_at=record.created_at,
     )

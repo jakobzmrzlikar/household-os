@@ -5,7 +5,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.adapter.input.web.routers import capture, health
+from app.adapter.input.web.routers import (
+    capture,
+    extraction,
+    health,
+    pending_command,
+)
 from app.infrastructure.container import Container
 from app.infrastructure.database import create_schema
 
@@ -31,5 +36,7 @@ def create_app() -> FastAPI:
     app.state.container = container
     app.include_router(health.router)
     app.include_router(capture.router)
+    app.include_router(extraction.router)
+    app.include_router(pending_command.router)
 
     return app

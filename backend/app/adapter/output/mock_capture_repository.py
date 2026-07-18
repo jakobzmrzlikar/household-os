@@ -18,3 +18,13 @@ class MockCaptureRepository(CaptureRepositoryPort):
         :param capture: The capture to record.
         """
         self.captures.append(capture)
+
+    async def get(self, capture_id: str) -> Capture | None:
+        """Look up a recorded capture by id.
+
+        :param capture_id: Identifier of the capture to fetch.
+        :return: The capture, or ``None`` when none was recorded with that id.
+        """
+        return next(
+            (capture for capture in self.captures if capture.id == capture_id), None
+        )

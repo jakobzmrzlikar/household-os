@@ -1,0 +1,7 @@
+### Run extraction on a capture -> { commands: ApiPendingCommand[] }
+POST {{baseUrl}}/run_extraction
+Content-Type: application/json
+
+{
+  "capture_id": "6f92510beeff48d085b0a1b6b33b0159"
+}

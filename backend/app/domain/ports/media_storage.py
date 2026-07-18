@@ -18,6 +18,15 @@ class MediaStoragePort(Protocol):
         """
         ...
 
+    async def load(self, media_path: str) -> bytes:
+        """Read a previously stored media file.
+
+        :param media_path: Storage-relative path returned by ``store``.
+        :return: The raw file bytes.
+        :raises FileNotFoundError: When no file exists at the path.
+        """
+        ...
+
 
 @define
 class MediaStoreRequest:

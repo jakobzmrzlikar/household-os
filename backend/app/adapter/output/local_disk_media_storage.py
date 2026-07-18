@@ -28,6 +28,15 @@ class LocalDiskMediaStorage(MediaStoragePort):
         await asyncio.to_thread(self._write, self.root_dir / name, request.content)
         return name
 
+    async def load(self, media_path: str) -> bytes:
+        """Read a stored file back from the root directory.
+
+        :param media_path: Storage-relative path returned by ``store``.
+        :return: The raw file bytes.
+        :raises FileNotFoundError: When no file exists at the path.
+        """
+        return await asyncio.to_thread((self.root_dir / media_path).read_bytes)
+
     @staticmethod
     def _write(target: Path, content: bytes) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
