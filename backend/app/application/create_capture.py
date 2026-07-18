@@ -1,13 +1,17 @@
 """Use case: the create_capture command — store an upload and record a Capture."""
 
+import logging
 from datetime import UTC, datetime
 from uuid import uuid4
 
 from attrs import Attribute, define, field
 
+from app.application.run_extraction import RunExtractionRequest, RunExtractionUsecase
 from app.domain.models.capture import Capture, CaptureKind
 from app.domain.ports.capture_repository import CaptureRepositoryPort
 from app.domain.ports.media_storage import MediaStoragePort, MediaStoreRequest
+
+logger = logging.getLogger(__name__)
 
 
 def _require_non_blank(
@@ -58,10 +62,15 @@ class CreateCaptureRequest:
 
 @define(kw_only=True)
 class CreateCaptureUsecase:
-    """Use case: store an uploaded media file and persist a capture for it."""
+    """Use case: store an uploaded media file and persist a capture for it.
+
+    Photo captures immediately run receipt extraction in-process, so the
+    proposed commands are staged without a separate run_extraction call.
+    """
 
     media_storage: MediaStoragePort
     capture_repository: CaptureRepositoryPort
+    run_extraction_usecase: RunExtractionUsecase
 
     async def __call__(self, request: CreateCaptureRequest) -> Capture:
         """Execute the create_capture command.
@@ -87,4 +96,22 @@ class CreateCaptureUsecase:
             created_at=datetime.now(UTC),
         )
         await self.capture_repository.add(capture)
+        if capture.kind is CaptureKind.PHOTO:
+            await self._extract(capture.id)
         return capture
+
+    async def _extract(self, capture_id: str) -> None:
+        """Run receipt extraction on the stored photo, best-effort.
+
+        The capture is already persisted, so an extraction failure (model
+        outage, unreadable photo) must not fail the upload; members can rerun
+        it through the debugging /run_extraction endpoint.
+
+        :param capture_id: The stored photo capture to extract.
+        """
+        try:
+            await self.run_extraction_usecase(
+                RunExtractionRequest(capture_id=capture_id)
+            )
+        except Exception:
+            logger.exception("Automatic extraction failed for capture %s", capture_id)

@@ -1,6 +1,7 @@
 """Use case: the run_extraction command — extract a capture, stage pending commands."""
 
 import mimetypes
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -20,7 +21,7 @@ from app.domain.ports.extraction_agent import (
     ReceiptExtractionRequest,
 )
 from app.domain.ports.media_storage import MediaStoragePort
-from app.domain.ports.pending_command_repository import PendingCommandRepositoryPort
+from app.domain.ports.unit_of_work import UnitOfWorkPort
 
 
 def _require_non_blank(
@@ -67,14 +68,14 @@ class RunExtractionUsecase:
     capture_repository: CaptureRepositoryPort
     media_storage: MediaStoragePort
     extraction_agent: ExtractionAgentPort
-    pending_command_repository: PendingCommandRepositoryPort
+    unit_of_work_factory: Callable[[], UnitOfWorkPort]
 
     async def __call__(self, request: RunExtractionRequest) -> list[PendingCommand]:
         """Execute the run_extraction command.
 
         Stages one ``record_expense`` command (receipt total, paid by the
-        capturing member, split equally) and one ``adjust_pantry_item`` command
-        per receipt line item.
+        capturing member) and one ``adjust_pantry_item`` command per receipt
+        line item, all in one transaction.
 
         :param request: The capture to extract.
         :return: The staged pending commands, expense first.
@@ -98,8 +99,9 @@ class RunExtractionUsecase:
             ReceiptExtractionRequest(image=image, media_type=media_type)
         )
         commands = _stage_commands(capture, extraction.receipt, extraction.provenance)
-        for command in commands:
-            await self.pending_command_repository.add(command)
+        async with self.unit_of_work_factory() as unit_of_work:
+            for command in commands:
+                await unit_of_work.pending_commands.add(command)
         return commands
 
 
@@ -125,7 +127,10 @@ def _stage_commands(
             "currency": receipt.currency,
             "merchant": receipt.merchant,
             "payer_member_id": capture.member_id,
-            "split": "equal",
+            # Fully materialized split, as the record_expense verb requires.
+            # Without a member registry to divide across, the whole amount
+            # falls to the capturing member who paid.
+            "split": {capture.member_id: receipt.total},
         },
         provenance=provenance,
         status=PendingCommandStatus.PENDING,

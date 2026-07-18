@@ -16,10 +16,26 @@ class PendingCommandRepositoryPort(Protocol):
         """
         ...
 
+    async def get(self, command_id: str) -> PendingCommand | None:
+        """Fetch a command by its identifier, regardless of status.
+
+        :param command_id: Identifier of the command to fetch.
+        :return: The command, or ``None`` when no command has that id.
+        """
+        ...
+
     async def list_pending(self, household_id: str) -> list[PendingCommand]:
         """Fetch a household's commands still awaiting approval.
 
         :param household_id: Household whose pending commands to list.
         :return: Commands with status ``pending``, oldest first.
+        """
+        ...
+
+    async def update(self, command: PendingCommand) -> None:
+        """Persist the current state of an already-staged command.
+
+        :param command: The command whose persisted state to overwrite.
+        :raises LookupError: When no persisted command has the command's id.
         """
         ...

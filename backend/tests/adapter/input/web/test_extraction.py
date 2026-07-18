@@ -11,6 +11,7 @@ from app.adapter.output.mock_media_storage import MockMediaStorage
 from app.adapter.output.mock_pending_command_repository import (
     MockPendingCommandRepository,
 )
+from app.adapter.output.mock_unit_of_work import MockUnitOfWork
 from app.domain.models.capture import Capture, CaptureKind
 from app.infrastructure.app import create_app
 from app.infrastructure.container import Container
@@ -55,8 +56,8 @@ def client(pending_command_repository: MockPendingCommandRepository) -> TestClie
     container.extraction_agent.override(  # pyright: ignore[reportUnknownMemberType]
         MockExtractionAgent()
     )
-    container.pending_command_repository.override(  # pyright: ignore[reportUnknownMemberType]
-        pending_command_repository
+    container.unit_of_work.override(  # pyright: ignore[reportUnknownMemberType]
+        MockUnitOfWork(pending_commands=pending_command_repository)
     )
     return TestClient(app)
 

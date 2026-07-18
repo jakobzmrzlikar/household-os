@@ -1,4 +1,4 @@
-"""Response DTOs for the list_pending_commands query endpoint."""
+"""Request/response DTOs for the pending command endpoints."""
 
 from datetime import datetime
 
@@ -22,6 +22,8 @@ class ApiPendingCommand(BaseModel):
     model_id: str
     status: PendingCommandStatus
     created_at: datetime
+    decided_by: str | None
+    decided_at: datetime | None
     human_readable: str
 
     @classmethod
@@ -40,6 +42,8 @@ class ApiPendingCommand(BaseModel):
             model_id=command.provenance.model_id,
             status=command.status,
             created_at=command.created_at,
+            decided_by=command.decided_by,
+            decided_at=command.decided_at,
             human_readable=command.human_readable(),
         )
 
@@ -48,3 +52,23 @@ class ApiListPendingCommandsResponse(BaseModel):
     """A household's commands awaiting approval, oldest first."""
 
     commands: list[ApiPendingCommand]
+
+
+class ApiApproveCommandRequest(BaseModel):
+    """The staged command to approve and the member approving it."""
+
+    command_id: str
+    member_id: str
+
+
+class ApiRejectCommandRequest(BaseModel):
+    """The staged command to reject and the member rejecting it."""
+
+    command_id: str
+    member_id: str
+
+
+class ApiCommandDecisionResponse(BaseModel):
+    """The decided command after an approve or reject."""
+
+    command: ApiPendingCommand

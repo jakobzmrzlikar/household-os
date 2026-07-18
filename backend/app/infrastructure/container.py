@@ -9,11 +9,11 @@ from dependency_injector import containers, providers
 
 from app.adapter.output.local_disk_media_storage import LocalDiskMediaStorage
 from app.adapter.output.sqlalchemy_capture_repository import SqlAlchemyCaptureRepository
-from app.adapter.output.sqlalchemy_pending_command_repository import (
-    SqlAlchemyPendingCommandRepository,
-)
+from app.adapter.output.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
+from app.application.approve_command import ApproveCommandUsecase
 from app.application.create_capture import CreateCaptureUsecase
 from app.application.list_pending_commands import ListPendingCommandsUsecase
+from app.application.reject_command import RejectCommandUsecase
 from app.application.run_extraction import RunExtractionUsecase
 from app.domain.agents.receipt_extraction import ReceiptExtractionAgent
 from app.infrastructure.database import create_engine, create_session_factory
@@ -52,8 +52,10 @@ class Container(containers.DeclarativeContainer):
     capture_repository = providers.Factory(
         SqlAlchemyCaptureRepository, session_factory=session_factory
     )
-    pending_command_repository = providers.Factory(
-        SqlAlchemyPendingCommandRepository, session_factory=session_factory
+    # One unit of work per command execution: every use case receives the
+    # factory (``.provider``) and opens its own single-transaction scope.
+    unit_of_work = providers.Factory(
+        SqlAlchemyUnitOfWork, session_factory=session_factory
     )
 
     # The concrete model binding for the receipt extraction agent lives here,
@@ -69,19 +71,28 @@ class Container(containers.DeclarativeContainer):
         ReceiptExtractionAgent, model=extraction_model
     )
 
-    create_capture_usecase = providers.Factory(
-        CreateCaptureUsecase,
-        media_storage=media_storage,
-        capture_repository=capture_repository,
-    )
     run_extraction_usecase = providers.Factory(
         RunExtractionUsecase,
         capture_repository=capture_repository,
         media_storage=media_storage,
         extraction_agent=extraction_agent,
-        pending_command_repository=pending_command_repository,
+        unit_of_work_factory=unit_of_work.provider,
+    )
+    create_capture_usecase = providers.Factory(
+        CreateCaptureUsecase,
+        media_storage=media_storage,
+        capture_repository=capture_repository,
+        run_extraction_usecase=run_extraction_usecase,
     )
     list_pending_commands_usecase = providers.Factory(
         ListPendingCommandsUsecase,
-        pending_command_repository=pending_command_repository,
+        unit_of_work_factory=unit_of_work.provider,
+    )
+    approve_command_usecase = providers.Factory(
+        ApproveCommandUsecase,
+        unit_of_work_factory=unit_of_work.provider,
+    )
+    reject_command_usecase = providers.Factory(
+        RejectCommandUsecase,
+        unit_of_work_factory=unit_of_work.provider,
     )

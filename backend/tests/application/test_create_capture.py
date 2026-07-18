@@ -3,9 +3,34 @@
 import pytest
 
 from app.adapter.output.mock_capture_repository import MockCaptureRepository
+from app.adapter.output.mock_extraction_agent import MockExtractionAgent
 from app.adapter.output.mock_media_storage import MockMediaStorage
+from app.adapter.output.mock_pending_command_repository import (
+    MockPendingCommandRepository,
+)
+from app.adapter.output.mock_unit_of_work import MockUnitOfWork
 from app.application.create_capture import CreateCaptureRequest, CreateCaptureUsecase
+from app.application.run_extraction import RunExtractionUsecase
 from app.domain.models.capture import CaptureKind, UnsupportedMediaTypeError
+from app.domain.ports.extraction_agent import (
+    ExtractionAgentPort,
+    ReceiptExtractionRequest,
+    ReceiptExtractionResponse,
+)
+
+
+class ExplodingExtractionAgent(ExtractionAgentPort):
+    """Extraction agent stub that fails every request."""
+
+    async def extract_receipt(
+        self, request: ReceiptExtractionRequest
+    ) -> ReceiptExtractionResponse:
+        """Fail unconditionally.
+
+        :param request: The extraction request (unused).
+        :raises RuntimeError: Always.
+        """
+        raise RuntimeError("model unavailable")
 
 
 @pytest.fixture
@@ -21,12 +46,30 @@ def media_storage() -> MockMediaStorage:
 
 
 @pytest.fixture
+def pending_command_repository() -> MockPendingCommandRepository:
+    """Mock repository recording commands staged by the automatic extraction."""
+    return MockPendingCommandRepository()
+
+
+@pytest.fixture
 def usecase(
-    capture_repository: MockCaptureRepository, media_storage: MockMediaStorage
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+    pending_command_repository: MockPendingCommandRepository,
 ) -> CreateCaptureUsecase:
     """Use case under test, wired to the in-memory mocks."""
+    run_extraction_usecase = RunExtractionUsecase(
+        capture_repository=capture_repository,
+        media_storage=media_storage,
+        extraction_agent=MockExtractionAgent(),
+        unit_of_work_factory=lambda: MockUnitOfWork(
+            pending_commands=pending_command_repository
+        ),
+    )
     return CreateCaptureUsecase(
-        media_storage=media_storage, capture_repository=capture_repository
+        media_storage=media_storage,
+        capture_repository=capture_repository,
+        run_extraction_usecase=run_extraction_usecase,
     )
 
 
@@ -59,6 +102,52 @@ async def test_create_capture_should_persist_audio_capture_when_audio_uploaded(
 
     assert capture.kind is CaptureKind.AUDIO
     assert capture_repository.captures == [capture]
+
+
+async def test_create_capture_should_stage_commands_when_photo_uploaded(
+    usecase: CreateCaptureUsecase,
+    pending_command_repository: MockPendingCommandRepository,
+) -> None:
+    capture = await usecase(_request("image/jpeg", filename="receipt.jpg"))
+
+    commands = await pending_command_repository.list_pending("hh-1")
+    assert commands
+    assert all(command.capture_id == capture.id for command in commands)
+
+
+async def test_create_capture_should_not_run_extraction_when_audio_uploaded(
+    usecase: CreateCaptureUsecase,
+    pending_command_repository: MockPendingCommandRepository,
+) -> None:
+    await usecase(_request("audio/m4a", filename="note.m4a"))
+
+    assert pending_command_repository.commands == []
+
+
+async def test_create_capture_should_persist_capture_when_extraction_fails(
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+    pending_command_repository: MockPendingCommandRepository,
+) -> None:
+    run_extraction_usecase = RunExtractionUsecase(
+        capture_repository=capture_repository,
+        media_storage=media_storage,
+        extraction_agent=ExplodingExtractionAgent(),
+        unit_of_work_factory=lambda: MockUnitOfWork(
+            pending_commands=pending_command_repository
+        ),
+    )
+    usecase = CreateCaptureUsecase(
+        media_storage=media_storage,
+        capture_repository=capture_repository,
+        run_extraction_usecase=run_extraction_usecase,
+    )
+
+    capture = await usecase(_request("image/jpeg", filename="receipt.jpg"))
+
+    # The upload survives the failed extraction; nothing is staged.
+    assert capture_repository.captures == [capture]
+    assert pending_command_repository.commands == []
 
 
 async def test_create_capture_should_raise_error_when_content_type_unsupported(

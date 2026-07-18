@@ -14,6 +14,7 @@ from app.adapter.output.mock_media_storage import MockMediaStorage
 from app.adapter.output.mock_pending_command_repository import (
     MockPendingCommandRepository,
 )
+from app.adapter.output.mock_unit_of_work import MockUnitOfWork
 from app.application.run_extraction import (
     CaptureNotExtractableError,
     CaptureNotFoundError,
@@ -50,18 +51,26 @@ def pending_command_repository() -> MockPendingCommandRepository:
 
 
 @pytest.fixture
+def unit_of_work(
+    pending_command_repository: MockPendingCommandRepository,
+) -> MockUnitOfWork:
+    """Mock unit of work exposing the in-memory pending command repository."""
+    return MockUnitOfWork(pending_commands=pending_command_repository)
+
+
+@pytest.fixture
 def usecase(
     capture_repository: MockCaptureRepository,
     media_storage: MockMediaStorage,
     extraction_agent: MockExtractionAgent,
-    pending_command_repository: MockPendingCommandRepository,
+    unit_of_work: MockUnitOfWork,
 ) -> RunExtractionUsecase:
     """Use case under test, wired to the in-memory mocks."""
     return RunExtractionUsecase(
         capture_repository=capture_repository,
         media_storage=media_storage,
         extraction_agent=extraction_agent,
-        pending_command_repository=pending_command_repository,
+        unit_of_work_factory=lambda: unit_of_work,
     )
 
 
@@ -104,7 +113,7 @@ async def test_run_extraction_should_stage_expense_and_pantry_when_capture_is_ph
         "currency": receipt.currency,
         "merchant": receipt.merchant,
         "payer_member_id": capture.member_id,
-        "split": "equal",
+        "split": {capture.member_id: receipt.total},
     }
     assert [command.verb for command in pantry] == [
         CommandVerb.ADJUST_PANTRY_ITEM

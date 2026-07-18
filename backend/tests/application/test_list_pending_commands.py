@@ -7,6 +7,7 @@ import pytest
 from app.adapter.output.mock_pending_command_repository import (
     MockPendingCommandRepository,
 )
+from app.adapter.output.mock_unit_of_work import MockUnitOfWork
 from app.application.list_pending_commands import (
     ListPendingCommandsRequest,
     ListPendingCommandsUsecase,
@@ -30,9 +31,8 @@ def usecase(
     pending_command_repository: MockPendingCommandRepository,
 ) -> ListPendingCommandsUsecase:
     """Use case under test, wired to the in-memory mock."""
-    return ListPendingCommandsUsecase(
-        pending_command_repository=pending_command_repository
-    )
+    unit_of_work = MockUnitOfWork(pending_commands=pending_command_repository)
+    return ListPendingCommandsUsecase(unit_of_work_factory=lambda: unit_of_work)
 
 
 def _command(

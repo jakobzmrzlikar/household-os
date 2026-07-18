@@ -4,7 +4,7 @@ import json
 
 from attrs import define
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapter.output.orm import PendingCommandRecord
 from app.domain.models.pending_command import (
@@ -18,17 +18,30 @@ from app.domain.ports.pending_command_repository import PendingCommandRepository
 
 @define(kw_only=True)
 class SqlAlchemyPendingCommandRepository(PendingCommandRepositoryPort):
-    """Pending command repository backed by a relational database."""
+    """Pending command repository bound to one open session.
 
-    session_factory: async_sessionmaker[AsyncSession]
+    Constructed by the unit of work and never commits: the owning unit of
+    work controls the transaction boundary, so writes from all repositories
+    sharing the session land atomically.
+    """
+
+    session: AsyncSession
 
     async def add(self, command: PendingCommand) -> None:
-        """Persist a new pending command row.
+        """Stage a new pending command row in the session.
 
         :param command: The pending command to persist.
         """
-        async with self.session_factory() as session, session.begin():
-            session.add(_to_record(command))
+        self.session.add(_to_record(command))
+
+    async def get(self, command_id: str) -> PendingCommand | None:
+        """Fetch a command row by primary key, regardless of status.
+
+        :param command_id: Identifier of the command to fetch.
+        :return: The command, or ``None`` when no row has that id.
+        """
+        record = await self.session.get(PendingCommandRecord, command_id)
+        return None if record is None else _to_domain(record)
 
     async def list_pending(self, household_id: str) -> list[PendingCommand]:
         """Fetch a household's rows with status ``pending``.
@@ -44,9 +57,21 @@ class SqlAlchemyPendingCommandRepository(PendingCommandRepositoryPort):
             )
             .order_by(PendingCommandRecord.created_at)
         )
-        async with self.session_factory() as session:
-            records = (await session.scalars(statement)).all()
+        records = (await self.session.scalars(statement)).all()
         return [_to_domain(record) for record in records]
+
+    async def update(self, command: PendingCommand) -> None:
+        """Overwrite the mutable fields of an existing command row.
+
+        :param command: The command whose persisted state to overwrite.
+        :raises LookupError: When no row has the command's id.
+        """
+        record = await self.session.get(PendingCommandRecord, command.id)
+        if record is None:
+            raise LookupError(f"No pending command with id {command.id!r}")
+        record.status = command.status.value
+        record.decided_by = command.decided_by
+        record.decided_at = command.decided_at
 
 
 def _to_record(command: PendingCommand) -> PendingCommandRecord:
@@ -65,6 +90,8 @@ def _to_record(command: PendingCommand) -> PendingCommandRecord:
         model_id=command.provenance.model_id,
         status=command.status.value,
         created_at=command.created_at,
+        decided_by=command.decided_by,
+        decided_at=command.decided_at,
     )
 
 
@@ -84,4 +111,6 @@ def _to_domain(record: PendingCommandRecord) -> PendingCommand:
         provenance=Provenance(agent_name=record.agent_name, model_id=record.model_id),
         status=PendingCommandStatus(record.status),
         created_at=record.created_at,
+        decided_by=record.decided_by,
+        decided_at=record.decided_at,
     )

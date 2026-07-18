@@ -1,9 +1,11 @@
 """Use case: list a household's staged commands awaiting approval."""
 
+from collections.abc import Callable
+
 from attrs import Attribute, define, field
 
 from app.domain.models.pending_command import PendingCommand
-from app.domain.ports.pending_command_repository import PendingCommandRepositoryPort
+from app.domain.ports.unit_of_work import UnitOfWorkPort
 
 
 def _require_non_blank(
@@ -34,7 +36,7 @@ class ListPendingCommandsRequest:
 class ListPendingCommandsUsecase:
     """Use case: fetch the commands still awaiting a member's approval."""
 
-    pending_command_repository: PendingCommandRepositoryPort
+    unit_of_work_factory: Callable[[], UnitOfWorkPort]
 
     async def __call__(
         self, request: ListPendingCommandsRequest
@@ -44,4 +46,7 @@ class ListPendingCommandsUsecase:
         :param request: The household to list pending commands for.
         :return: The household's pending commands, oldest first.
         """
-        return await self.pending_command_repository.list_pending(request.household_id)
+        async with self.unit_of_work_factory() as unit_of_work:
+            return await unit_of_work.pending_commands.list_pending(
+                request.household_id
+            )

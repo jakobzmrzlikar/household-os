@@ -19,6 +19,16 @@ class MockPendingCommandRepository(PendingCommandRepositoryPort):
         """
         self.commands.append(command)
 
+    async def get(self, command_id: str) -> PendingCommand | None:
+        """Look up a recorded command by id, regardless of status.
+
+        :param command_id: Identifier of the command to fetch.
+        :return: The command, or ``None`` when none was recorded with that id.
+        """
+        return next(
+            (command for command in self.commands if command.id == command_id), None
+        )
+
     async def list_pending(self, household_id: str) -> list[PendingCommand]:
         """Filter recorded commands by household and pending status.
 
@@ -31,3 +41,15 @@ class MockPendingCommandRepository(PendingCommandRepositoryPort):
             if command.household_id == household_id
             and command.status is PendingCommandStatus.PENDING
         ]
+
+    async def update(self, command: PendingCommand) -> None:
+        """Replace the recorded command sharing the given command's id.
+
+        :param command: The command whose recorded state to overwrite.
+        :raises LookupError: When no command was recorded with the command's id.
+        """
+        for index, existing in enumerate(self.commands):
+            if existing.id == command.id:
+                self.commands[index] = command
+                return
+        raise LookupError(f"No pending command with id {command.id!r}")

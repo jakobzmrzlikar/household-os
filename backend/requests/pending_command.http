@@ -1,2 +1,20 @@
 ### List pending commands -> { commands: ApiPendingCommand[] }
 GET {{baseUrl}}/list_pending_commands?household_id=demo-household
+
+### Approve a pending command -> { command: ApiPendingCommand }
+POST {{baseUrl}}/approve_command
+Content-Type: application/json
+
+{
+  "command_id": "6f92510beeff48d085b0a1b6b33b0159",
+  "member_id": "demo-member"
+}
+
+### Reject a pending command -> { command: ApiPendingCommand }
+POST {{baseUrl}}/reject_command
+Content-Type: application/json
+
+{
+  "command_id": "6f92510beeff48d085b0a1b6b33b0159",
+  "member_id": "demo-member"
+}
