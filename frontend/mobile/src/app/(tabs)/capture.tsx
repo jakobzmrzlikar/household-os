@@ -13,22 +13,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { HOUSEHOLD_ID } from '@/constants/household';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useSelectedMember } from '@/context/member-context';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
-// Demo auth is a member picker (not built yet): captures are attributed to a
-// fixed demo household/member until the picker lands.
-const HOUSEHOLD_ID = 'demo-household';
-const MEMBER_ID = 'demo-member';
-
-async function uploadCapture(fileUri: string): Promise<string> {
+async function uploadCapture(fileUri: string, memberId: string): Promise<string> {
   if (!API_URL) {
     throw new Error('EXPO_PUBLIC_API_URL is not set');
   }
   const body = new FormData();
   body.append('household_id', HOUSEHOLD_ID);
-  body.append('member_id', MEMBER_ID);
+  body.append('member_id', memberId);
   // Expo's WinterCG fetch rejects RN's legacy {uri, name, type} descriptors;
   // expo-file-system's File implements Blob and carries name + MIME type.
   body.append('file', new File(fileUri) as unknown as Blob);
@@ -41,6 +38,7 @@ async function uploadCapture(fileUri: string): Promise<string> {
 }
 
 export default function CaptureScreen() {
+  const member = useSelectedMember();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const cameraRef = useRef<CameraView>(null);
@@ -72,7 +70,7 @@ export default function CaptureScreen() {
     setUploading(true);
     setStatus(null);
     try {
-      const id = await uploadCapture(fileUri);
+      const id = await uploadCapture(fileUri, member.id);
       setStatus(`Capture created: ${id}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
