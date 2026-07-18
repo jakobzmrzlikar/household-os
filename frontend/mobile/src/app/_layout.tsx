@@ -19,7 +19,14 @@ export default function RootLayout() {
     // safe to call and no events leave the device.
     <PostHogProvider
       apiKey={POSTHOG_API_KEY || 'disabled'}
-      options={{ host: POSTHOG_HOST || undefined, disabled: !POSTHOG_API_KEY }}
+      options={{
+        host: POSTHOG_HOST || undefined,
+        disabled: !POSTHOG_API_KEY,
+        // Demo setup: ship every event immediately and emit lifecycle events,
+        // so the live PostHog dashboard reacts in real time on stage.
+        flushAt: 1,
+        captureAppLifecycleEvents: true,
+      }}
       autocapture={false}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <MemberProvider>
