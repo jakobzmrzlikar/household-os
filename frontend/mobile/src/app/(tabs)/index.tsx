@@ -180,7 +180,7 @@ function CommandCard({
       <View style={styles.cardHeader}>
         <ThemedView type="backgroundSelected" style={styles.provenancePill}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.provenanceText}>
-            {sourceLabel(command)} · {command.model_id}
+            {provenanceLabel(command)}
           </ThemedText>
         </ThemedView>
         {pending ? (
@@ -337,15 +337,13 @@ function extractLineItems(payload: Record<string, unknown>): CardLineItem[] {
   });
 }
 
-function sourceLabel(command: ApiPendingCommand): string {
+function provenanceLabel(command: ApiPendingCommand): string {
   const agent = command.agent_name.toLowerCase();
   if (agent.includes('voice') || agent.includes('audio') || agent.includes('transcript')) {
     return 'voice note';
   }
-  if (agent.includes('receipt')) {
-    return 'receipt';
-  }
-  return command.agent_name.replaceAll('_', ' ');
+  const source = agent.includes('receipt') ? 'receipt' : command.agent_name.replaceAll('_', ' ');
+  return `${source} · ${command.model_id}`;
 }
 
 function memberName(memberId: string): string {

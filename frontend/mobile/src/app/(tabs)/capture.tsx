@@ -96,8 +96,8 @@ export default function CaptureScreen() {
     setUploading(true);
     setStatus(null);
     try {
-      const id = await uploadCapture(fileUri, member.id);
-      setStatus(`Capture created: ${id}`);
+      await uploadCapture(fileUri, member.id);
+      setStatus('Capture sent. Proposals will show up in Approvals.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
