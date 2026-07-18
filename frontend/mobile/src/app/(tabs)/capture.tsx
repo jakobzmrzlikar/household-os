@@ -8,14 +8,15 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { HOUSEHOLD_ID } from '@/constants/household';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSelectedMember } from '@/context/member-context';
+import { useTheme } from '@/hooks/use-theme';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -39,6 +40,7 @@ async function uploadCapture(fileUri: string, memberId: string): Promise<string>
 
 export default function CaptureScreen() {
   const member = useSelectedMember();
+  const theme = useTheme();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const cameraRef = useRef<CameraView>(null);
@@ -46,9 +48,11 @@ export default function CaptureScreen() {
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   // Resolves true when the in-flight hold-to-record gesture actually started
   // recording; lets a release that beats prepareToRecordAsync wait for it.
   const recordingStartRef = useRef<Promise<boolean> | null>(null);
+  const [recordingPulse] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     // Ask for the microphone and enable a recording-capable audio session once
@@ -65,6 +69,28 @@ export default function CaptureScreen() {
       setStatus(error instanceof Error ? error.message : String(error));
     });
   }, []);
+
+  useEffect(() => {
+    if (!recording) {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(recordingPulse, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+        Animated.timing(recordingPulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ]),
+    );
+    pulse.start();
+    return () => {
+      clearInterval(timer);
+      pulse.stop();
+      recordingPulse.setValue(1);
+    };
+  }, [recording, recordingPulse]);
 
   const submit = async (fileUri: string) => {
     setUploading(true);
@@ -105,6 +131,7 @@ export default function CaptureScreen() {
       try {
         await recorder.prepareToRecordAsync();
         recorder.record();
+        setElapsedSeconds(0);
         setRecording(true);
         return true;
       } catch (error) {
@@ -166,34 +193,55 @@ export default function CaptureScreen() {
           Capture
         </ThemedText>
 
-        <Pressable
-          onPress={openCamera}
-          disabled={uploading}
-          style={({ pressed }) => [pressed && styles.pressed, styles.buttonWrapper]}>
-          <ThemedView type="backgroundElement" style={styles.bigButton}>
-            <ThemedText type="subtitle">Photo receipt</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Tap to open the camera
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <View style={styles.captureAction}>
+          <Pressable
+            accessibilityLabel="Photo receipt"
+            onPress={openCamera}
+            disabled={uploading}
+            style={({ pressed }) => [pressed && styles.pressed]}>
+            <View style={[styles.photoButton, { backgroundColor: theme.accent }]}>
+              <View style={[styles.photoInnerRing, { borderColor: theme.onAccent }]} />
+            </View>
+          </Pressable>
+          <ThemedText type="smallBold">Photo receipt</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Tap to open the camera
+          </ThemedText>
+        </View>
 
-        <Pressable
-          onPressIn={startRecording}
-          onPressOut={stopRecording}
-          disabled={uploading}
-          style={({ pressed }) => [pressed && styles.pressed, styles.buttonWrapper]}>
-          <ThemedView
-            type={recording ? 'backgroundSelected' : 'backgroundElement'}
-            style={styles.bigButton}>
-            <ThemedText type="subtitle">
-              {recording ? 'Recording…' : 'Voice note'}
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Hold to record, release to send
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <View style={styles.captureAction}>
+          <Pressable
+            accessibilityLabel="Voice note, hold to record"
+            onPressIn={startRecording}
+            onPressOut={stopRecording}
+            disabled={uploading}>
+            <View
+              style={[
+                styles.voiceButton,
+                { borderColor: recording ? theme.recording : theme.accent },
+              ]}>
+              {recording ? (
+                <View style={styles.recordingState}>
+                  <Animated.View
+                    style={[
+                      styles.recordingDot,
+                      { backgroundColor: theme.recording, opacity: recordingPulse },
+                    ]}
+                  />
+                  <ThemedText type="smallBold" style={styles.recordingTimer}>
+                    {formatElapsed(elapsedSeconds)}
+                  </ThemedText>
+                </View>
+              ) : (
+                <View style={[styles.voiceIdleDot, { backgroundColor: theme.accent }]} />
+              )}
+            </View>
+          </Pressable>
+          <ThemedText type="smallBold">{recording ? 'Recording…' : 'Voice note'}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Hold to record, release to send
+          </ThemedText>
+        </View>
 
         <View style={styles.statusRow}>
           {uploading ? <ActivityIndicator /> : null}
@@ -208,6 +256,11 @@ export default function CaptureScreen() {
   );
 }
 
+function formatElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -219,20 +272,56 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     justifyContent: 'center',
-    gap: Spacing.four,
+    gap: Spacing.five,
   },
   title: {
     textAlign: 'center',
     marginBottom: Spacing.four,
   },
-  buttonWrapper: {
-    alignSelf: 'stretch',
-  },
-  bigButton: {
+  captureAction: {
     alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.six,
-    borderRadius: Spacing.four,
+    gap: Spacing.one,
+  },
+  photoButton: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.two,
+  },
+  photoInnerRing: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 4,
+  },
+  voiceButton: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.two,
+  },
+  voiceIdleDot: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  recordingState: {
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  recordingDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  recordingTimer: {
+    fontFamily: Fonts.mono,
+    fontVariant: ['tabular-nums'],
   },
   pressed: {
     opacity: 0.6,

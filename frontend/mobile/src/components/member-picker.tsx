@@ -6,6 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MEMBERS, type Member } from '@/constants/household';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useMember } from '@/context/member-context';
+import { useTheme } from '@/hooks/use-theme';
 
 export function MemberPicker() {
   const { setMember } = useMember();
@@ -28,19 +29,28 @@ export function MemberPicker() {
 }
 
 function MemberCard({ member, onSelect }: { member: Member; onSelect: (member: Member) => void }) {
+  const theme = useTheme();
+
   return (
     <Pressable
       accessibilityLabel={`Continue as ${member.name}`}
       onPress={() => onSelect(member)}
-      style={({ pressed }) => [styles.cardWrapper, pressed && styles.pressed]}>
-      <ThemedView type="backgroundElement" style={styles.card}>
-        <View style={styles.avatar}>
-          <ThemedText type="subtitle" style={styles.avatarInitial}>
-            {member.name.charAt(0)}
-          </ThemedText>
+      style={styles.cardWrapper}>
+      {({ pressed }) => (
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: pressed ? theme.accentSoft : theme.backgroundElement,
+              borderColor: pressed ? theme.accent : 'transparent',
+            },
+          ]}>
+          <View style={[styles.avatar, { backgroundColor: theme.backgroundSelected }]}>
+            <ThemedText type="subtitle">{member.name.charAt(0)}</ThemedText>
+          </View>
+          <ThemedText type="subtitle">{member.name}</ThemedText>
         </View>
-        <ThemedText type="subtitle">{member.name}</ThemedText>
-      </ThemedView>
+      )}
     </Pressable>
   );
 }
@@ -73,6 +83,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingVertical: Spacing.six,
     borderRadius: Spacing.four,
+    borderWidth: 2,
   },
   avatar: {
     width: 72,
@@ -80,12 +91,5 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#3c87f7',
-  },
-  avatarInitial: {
-    color: '#ffffff',
-  },
-  pressed: {
-    opacity: 0.6,
   },
 });

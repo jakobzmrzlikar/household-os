@@ -14,6 +14,14 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    // Emerald accent, reserved for: Approve (filled), capture buttons,
+    // member-picker selection highlight, active tab tint. Darkened in light
+    // mode so white-on-accent text stays readable.
+    accent: '#059669',
+    accentSoft: '#D1FAE5',
+    onAccent: '#ffffff',
+    danger: '#DC2626',
+    recording: '#DC2626',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +29,12 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    accent: '#10B981',
+    accentSoft: '#0B3B2A',
+    // Bright emerald needs a dark label, not white, to stay readable.
+    onAccent: '#052E20',
+    danger: '#F87171',
+    recording: '#F87171',
   },
 } as const;
 

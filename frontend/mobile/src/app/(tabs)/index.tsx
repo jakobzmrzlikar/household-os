@@ -6,9 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { HOUSEHOLD_ID } from '@/constants/household';
+import { HOUSEHOLD_ID, MEMBERS } from '@/constants/household';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSelectedMember } from '@/context/member-context';
+import { useTheme } from '@/hooks/use-theme';
 import {
   approveCommand,
   EndpointNotFoundError,
@@ -31,6 +32,7 @@ export default function ApprovalQueueScreen() {
   // detected, the queue stays visible but read-only.
   const [readOnly, setReadOnly] = useState(false);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const theme = useTheme();
 
   const load = useCallback(async () => {
     try {
@@ -99,7 +101,7 @@ export default function ApprovalQueueScreen() {
         ) : null}
         {actionError ? (
           <ThemedView type="backgroundElement" style={styles.banner}>
-            <ThemedText type="small" style={styles.errorText}>
+            <ThemedText type="small" style={{ color: theme.danger }}>
               {actionError}
             </ThemedText>
           </ThemedView>
@@ -115,13 +117,7 @@ export default function ApprovalQueueScreen() {
             keyExtractor={(command) => command.id}
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-            ListEmptyComponent={
-              <View style={styles.centered}>
-                <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-                  {loadError ?? 'Nothing waiting for approval. Capture a receipt or voice note to get started.'}
-                </ThemedText>
-              </View>
-            }
+            ListEmptyComponent={<EmptyState error={loadError} />}
             renderItem={({ item }) => (
               <CommandCard
                 command={item}
@@ -137,6 +133,31 @@ export default function ApprovalQueueScreen() {
   );
 }
 
+function EmptyState({ error }: { error: string | null }) {
+  const theme = useTheme();
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <ThemedText type="small" style={[styles.emptyBody, { color: theme.danger }]}>
+          {error}
+        </ThemedText>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.centered}>
+      <View style={[styles.emptyIconCircle, { borderColor: theme.textSecondary }]}>
+        <View style={[styles.emptyIconCheck, { borderColor: theme.textSecondary }]} />
+      </View>
+      <ThemedText type="smallBold">All caught up</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.emptyBody}>
+        Capture a receipt or voice note and proposals will land here.
+      </ThemedText>
+    </View>
+  );
+}
+
 function CommandCard({
   command,
   deciding,
@@ -148,26 +169,63 @@ function CommandCard({
   readOnly: boolean;
   onDecide: (command: ApiPendingCommand, decision: Decision) => void;
 }) {
+  const theme = useTheme();
   const pending = command.status === 'pending';
+  const summary = summarize(command);
+  const items = extractLineItems(command.payload);
+  const transcript = asString(command.payload.transcript);
+
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.cardHeader}>
-        <ThemedView type="backgroundSelected" style={styles.verbBadge}>
-          <ThemedText type="smallBold">{command.verb.replaceAll('_', ' ')}</ThemedText>
+        <ThemedView type="backgroundSelected" style={styles.provenancePill}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.provenanceText}>
+            {sourceLabel(command)} · {command.model_id}
+          </ThemedText>
         </ThemedView>
-        {!pending ? (
+        {pending ? (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.metaText}>
+            {formatTimestamp(command.created_at)}
+          </ThemedText>
+        ) : (
           <ThemedText type="smallBold" themeColor="textSecondary" style={styles.statusText}>
             {command.status}
           </ThemedText>
-        ) : null}
+        )}
       </View>
 
-      <ThemedText>{command.human_readable}</ThemedText>
+      <View style={styles.summaryBlock}>
+        <ThemedText style={styles.headline}>{summary.headline}</ThemedText>
+        {summary.amount ? <ThemedText style={styles.amount}>{summary.amount}</ThemedText> : null}
+        <ThemedText type="small" themeColor="textSecondary">
+          {summary.subline}
+        </ThemedText>
+      </View>
 
-      <ThemedText type="small" themeColor="textSecondary">
-        Proposed by {command.agent_name} ({command.model_id}) on{' '}
-        {new Date(command.created_at).toLocaleString()}
-      </ThemedText>
+      {items.length > 0 ? (
+        <View style={styles.lineItems}>
+          {items.map((item, index) => (
+            <View key={index} style={styles.lineItemRow}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.lineItemName}>
+                {item.name}
+              </ThemedText>
+              {item.detail ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {item.detail}
+                </ThemedText>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {transcript ? (
+        <View style={[styles.transcript, { borderLeftColor: theme.backgroundSelected }]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.transcriptText}>
+            &ldquo;{transcript}&rdquo;
+          </ThemedText>
+        </View>
+      ) : null}
 
       {pending && !readOnly ? (
         <View style={styles.actions}>
@@ -177,13 +235,13 @@ function CommandCard({
             onPress={() => onDecide(command, 'approve')}
             style={({ pressed }) => [
               styles.actionButton,
-              styles.approveButton,
+              { backgroundColor: theme.accent },
               (pressed || deciding) && styles.pressed,
             ]}>
             {deciding ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={theme.onAccent} />
             ) : (
-              <ThemedText type="smallBold" style={styles.approveLabel}>
+              <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
                 Approve
               </ThemedText>
             )}
@@ -195,9 +253,10 @@ function CommandCard({
             style={({ pressed }) => [
               styles.actionButton,
               styles.rejectButton,
+              { borderColor: theme.danger },
               (pressed || deciding) && styles.pressed,
             ]}>
-            <ThemedText type="smallBold" style={styles.rejectLabel}>
+            <ThemedText type="smallBold" style={{ color: theme.danger }}>
               Reject
             </ThemedText>
           </Pressable>
@@ -205,6 +264,121 @@ function CommandCard({
       ) : null}
     </ThemedView>
   );
+}
+
+type CardSummary = {
+  headline: string;
+  amount: string | null;
+  subline: string;
+};
+
+type CardLineItem = {
+  name: string;
+  detail: string | null;
+};
+
+function summarize(command: ApiPendingCommand): CardSummary {
+  const payload = command.payload;
+  if (command.verb === 'record_expense') {
+    const amount = asNumber(payload.amount);
+    const currency = asString(payload.currency);
+    const payer = asString(payload.payer_member_id);
+    const split = payload.split;
+    const parts = ['Record expense'];
+    if (payer) {
+      parts.push(`paid by ${memberName(payer)}`);
+    }
+    if (typeof split === 'object' && split !== null && Object.keys(split).length > 1) {
+      parts.push(`split ${Object.keys(split).length} ways`);
+    }
+    return {
+      headline: asString(payload.merchant) ?? 'Expense',
+      amount: amount === null ? null : formatAmount(amount, currency),
+      subline: parts.join(' · '),
+    };
+  }
+  if (command.verb === 'adjust_pantry_item') {
+    const quantity = asNumber(payload.quantity);
+    const unit = asString(payload.unit);
+    return {
+      headline: asString(payload.name) ?? 'Pantry item',
+      amount: quantity === null ? null : `${quantity} ${unit ?? ''}`.trim(),
+      subline: 'Add to pantry',
+    };
+  }
+  // Unreachable for the current verb union; keeps unknown verbs renderable.
+  return {
+    headline: command.human_readable,
+    amount: null,
+    subline: String(command.verb).replaceAll('_', ' '),
+  };
+}
+
+// Payloads are agent-produced JSON; render line items only when they are
+// present and well-formed rather than trusting the shape.
+function extractLineItems(payload: Record<string, unknown>): CardLineItem[] {
+  const raw = payload.line_items;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.flatMap((entry: unknown): CardLineItem[] => {
+    if (typeof entry !== 'object' || entry === null) {
+      return [];
+    }
+    const item = entry as Record<string, unknown>;
+    const name = asString(item.name);
+    if (name === null) {
+      return [];
+    }
+    const quantity = asNumber(item.quantity);
+    const unit = asString(item.unit);
+    const detail = quantity === null ? null : `${quantity} ${unit ?? ''}`.trim();
+    return [{ name, detail }];
+  });
+}
+
+function sourceLabel(command: ApiPendingCommand): string {
+  const agent = command.agent_name.toLowerCase();
+  if (agent.includes('voice') || agent.includes('audio') || agent.includes('transcript')) {
+    return 'voice note';
+  }
+  if (agent.includes('receipt')) {
+    return 'receipt';
+  }
+  return command.agent_name.replaceAll('_', ' ');
+}
+
+function memberName(memberId: string): string {
+  return MEMBERS.find((member) => member.id === memberId)?.name ?? memberId;
+}
+
+function formatAmount(amount: number, currency: string | null): string {
+  if (!currency) {
+    return amount.toFixed(2);
+  }
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+  } catch {
+    // Unknown/invalid currency code from the agent; show it verbatim.
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
+function formatTimestamp(isoDate: string): string {
+  return new Date(isoDate).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 const styles = StyleSheet.create({
@@ -229,17 +403,33 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     marginBottom: Spacing.three,
   },
-  errorText: {
-    color: '#d64545',
-  },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.two,
     paddingVertical: Spacing.six,
   },
-  emptyText: {
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.two,
+  },
+  emptyIconCheck: {
+    width: 22,
+    height: 12,
+    borderLeftWidth: 2.5,
+    borderBottomWidth: 2.5,
+    transform: [{ rotate: '-45deg' }],
+    marginTop: -4,
+  },
+  emptyBody: {
     textAlign: 'center',
+    maxWidth: 260,
   },
   listContent: {
     gap: Spacing.three,
@@ -255,14 +445,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.two,
   },
-  verbBadge: {
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.two,
+  provenancePill: {
+    borderRadius: 999,
+    paddingHorizontal: Spacing.two + Spacing.half,
     paddingVertical: Spacing.half,
+  },
+  provenanceText: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  metaText: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   statusText: {
     textTransform: 'capitalize',
+  },
+  summaryBlock: {
+    gap: Spacing.half,
+  },
+  headline: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: 600,
+  },
+  amount: {
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: 700,
+  },
+  lineItems: {
+    gap: Spacing.one,
+  },
+  lineItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  lineItemName: {
+    flexShrink: 1,
+  },
+  transcript: {
+    borderLeftWidth: 3,
+    paddingLeft: Spacing.two + Spacing.half,
+  },
+  transcriptText: {
+    fontStyle: 'italic',
   },
   actions: {
     flexDirection: 'row',
@@ -276,18 +506,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     minHeight: 48,
   },
-  approveButton: {
-    backgroundColor: '#3c87f7',
-  },
-  approveLabel: {
-    color: '#ffffff',
-  },
   rejectButton: {
     borderWidth: 1,
-    borderColor: '#d64545',
-  },
-  rejectLabel: {
-    color: '#d64545',
   },
   pressed: {
     opacity: 0.6,
