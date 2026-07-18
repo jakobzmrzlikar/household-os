@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "expo@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "mcp__linear__get_project",
+      "mcp__linear__list_projects",
+      "mcp__linear__list_milestones",
+      "mcp__linear__list_issues",
+      "mcp__linear__list_issue_labels",
+      "mcp__linear__save_issue"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-commits.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

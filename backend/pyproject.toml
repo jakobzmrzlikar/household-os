@@ -1,0 +1,125 @@
+# household-os backend — FastAPI + Pydantic AI
+#
+# Tooling coordination: keep the uv-pre-commit and ruff-pre-commit revs in
+# .pre-commit-config.yaml aligned with the versions used in CI. See ADR-0004.
+
+[project]
+name = "household-os-backend"
+version = "0.1.0"
+description = "household-os backend"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "attrs>=24.1",
+    "pydantic>=2.13",
+    "pydantic-ai>=2.0",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "dependency-injector>=4.49.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "commitizen",
+    "import-linter>=2.0",
+    "basedpyright>=1.21",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[tool.uv]
+# This is an application, not a distributable library — don't build it.
+package = false
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# Lint rules: pycodestyle errors, Pyflakes, isort, pyupgrade, flake8-bugbear.
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are calls evaluated in argument defaults by design,
+# so they are immutable, not the mutable-default bug B008 targets. Whitelisting them
+# lets routes use the canonical `param: T = Depends(...)` form without a B008 noqa.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# Async tests (e.g. Pydantic AI agents) need no per-test marker.
+asyncio_mode = "auto"
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "integration: tests that require external services (DB, network, LLM APIs)",
+    "slow: long-running tests",
+]
+
+[tool.basedpyright]
+include = ["app", "tests"]
+pythonVersion = "3.14"
+# Strict checking. New errors should be fixed, not silenced; if a one-time
+# baseline of pre-existing errors is needed, generate it with
+# `uv run basedpyright --writebaseline`.
+typeCheckingMode = "strict"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+tag_format = "backend-v$version"
+update_changelog_on_bump = true
+major_version_zero = true
+
+# Enforces the hexagonal dependency rule (ADR-0005). Run: uv run lint-imports
+[tool.importlinter]
+root_package = "app"
+# Required because the forbidden contract names external packages (fastapi, etc.).
+include_external_packages = true
+
+# Layers are listed high -> low. A lower layer must not import a higher one.
+# infrastructure (top) may import anything; domain (bottom) may import nothing above it.
+[[tool.importlinter.contracts]]
+name = "Hexagonal layers (dependencies point inward)"
+type = "layers"
+layers = [
+    "app.infrastructure",
+    "app.adapter",
+    "app.application",
+    "app.domain",
+]
+# The one sanctioned exception (ADR-0009): web routers import the DI container to
+# reference providers with static type-safety (Provide[Container.x]). Scoped to
+# routers -> the container module only; no other adapter -> infrastructure import
+# is allowed.
+ignore_imports = [
+    "app.adapter.input.web.routers.* -> app.infrastructure.container",
+]
+# No router injects a provider yet (/health has no dependencies), so the exception
+# above currently matches nothing. Without this, import-linter fails the run on the
+# unused entry -- keep the sanctioned exception documented and ready instead of
+# deleting and re-deriving it with the first router that needs DI.
+unmatched_ignore_imports_alerting = "none"
+
+# Belt-and-suspenders: the domain must never import frameworks or I/O libraries.
+[[tool.importlinter.contracts]]
+name = "Domain stays framework-free"
+type = "forbidden"
+source_modules = ["app.domain"]
+forbidden_modules = [
+    "fastapi",
+    "starlette",
+    "uvicorn",
+    "sqlalchemy",
+    "alembic",
+    "httpx",
+]

@@ -1,0 +1,34 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "rest-client.environmentVariables": {
+        "$shared": {
+            "baseUrl": "http://127.0.0.1:8000"
+        },
+        "local": {
+            "baseUrl": "http://127.0.0.1:8000"
+        }
+    },
+    "git.decorations.enabled": true,
+    "explorer.decorations.colors": true,
+    "explorer.decorations.badges": true,
+    "workbench.colorCustomizations": {
+        "gitDecoration.ignoredResourceForeground": "#465A64",
+    },
+    "[typescript]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit",
+            "source.sortMembers": "explicit"
+        }
+    },
+    "[typescriptreact]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit",
+            "source.sortMembers": "explicit"
+        }
+    },
+}

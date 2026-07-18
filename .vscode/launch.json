@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Backend: FastAPI (uvicorn)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--reload",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000"
+            ],
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/backend/.env",
+            "python": "${workspaceFolder}/backend/.venv/bin/python",
+            "console": "integratedTerminal",
+            "jinja": true,
+            "justMyCode": true
+        },
+        {
+            "name": "Frontend: Expo app (attach)",
+            "type": "expo",
+            "request": "attach",
+            "projectRoot": "${workspaceFolder}/frontend/mobile",
+            "bundlerHost": "127.0.0.1",
+            "bundlerPort": "8081",
+            "restart": true
+        }
+    ]
+}

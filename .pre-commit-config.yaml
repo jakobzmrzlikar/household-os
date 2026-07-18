@@ -1,0 +1,56 @@
+# Pre-commit hooks for sol (monorepo).
+# See https://pre-commit.com for more information.
+#
+# Install once per clone:
+#   pre-commit install                          # ruff + uv-lock on commit
+#   pre-commit install --hook-type commit-msg   # commitizen / Conventional Commits
+#
+# The Python project lives in backend/, so the uv-lock hook is scoped there.
+# Ruff discovers its config from backend/pyproject.toml automatically.
+
+repos:
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # Keep this rev aligned with the uv version used in CI. See ADR-0004.
+    rev: 0.11.14
+    hooks:
+      - id: uv-lock
+        args: [--project, backend]
+        files: ^backend/(pyproject\.toml|uv\.lock)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.4
+    hooks:
+      # Run the linter. Since we use --fix, it must come before formatting.
+      - id: ruff-check
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.16.0
+    hooks:
+      # Validate the commit message against Conventional Commits (ADR-0004).
+      - id: commitizen
+        stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      # Enforce the hexagonal dependency rule (ADR-0005). Runs in backend/ via
+      # uv so the `app` package and its config resolve. Config lives in
+      # backend/pyproject.toml under [tool.importlinter].
+      - id: import-linter
+        name: import-linter (hexagonal boundaries)
+        entry: uv run --directory backend lint-imports
+        language: system
+        pass_filenames: false
+        files: ^backend/app/.*\.py$
+
+      # Strict static type checking for the backend (ADR-0007). Runs in backend/
+      # via uv so imports resolve against the synced env. Config lives in
+      # backend/pyproject.toml under [tool.basedpyright].
+      - id: basedpyright
+        name: basedpyright (type check)
+        entry: uv run --directory backend basedpyright
+        language: system
+        pass_filenames: false
+        files: ^backend/app/.*\.py$
