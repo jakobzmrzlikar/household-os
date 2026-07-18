@@ -21,6 +21,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "python-multipart>=0.0.32",
     "pydantic-settings>=2.14.2",
+    "elevenlabs>=2.58.0",
 ]
 
 [dependency-groups]
@@ -127,4 +128,5 @@ forbidden_modules = [
     "sqlalchemy",
     "alembic",
     "httpx",
+    "elevenlabs",
 ]

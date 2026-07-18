@@ -64,8 +64,9 @@ class CreateCaptureRequest:
 class CreateCaptureUsecase:
     """Use case: store an uploaded media file and persist a capture for it.
 
-    Photo captures immediately run receipt extraction in-process, so the
-    proposed commands are staged without a separate run_extraction call.
+    Captures immediately run extraction in-process — receipt extraction for
+    photos, transcription plus pantry intent extraction for voice notes — so
+    the proposed commands are staged without a separate run_extraction call.
     """
 
     media_storage: MediaStoragePort
@@ -96,18 +97,17 @@ class CreateCaptureUsecase:
             created_at=datetime.now(UTC),
         )
         await self.capture_repository.add(capture)
-        if capture.kind is CaptureKind.PHOTO:
-            await self._extract(capture.id)
+        await self._extract(capture.id)
         return capture
 
     async def _extract(self, capture_id: str) -> None:
-        """Run receipt extraction on the stored photo, best-effort.
+        """Run extraction on the stored capture, best-effort.
 
-        The capture is already persisted, so an extraction failure (model
-        outage, unreadable photo) must not fail the upload; members can rerun
-        it through the debugging /run_extraction endpoint.
+        The capture is already persisted, so an extraction failure (model or
+        transcription outage, unreadable media) must not fail the upload;
+        members can rerun it through the debugging /run_extraction endpoint.
 
-        :param capture_id: The stored photo capture to extract.
+        :param capture_id: The stored capture to extract.
         """
         try:
             await self.run_extraction_usecase(

@@ -43,16 +43,22 @@ class AdjustPantryItemPayload(BaseModel):
     """Arguments of the adjust_pantry_item verb.
 
     ``quantity`` is a signed delta applied to the household's current stock of
-    ``name`` (negative for consumption). ``extra="forbid"`` for the same
-    cross-household reason as :class:`RecordExpensePayload`.
+    ``name`` (negative for consumption); ``out_of_stock`` instead zeroes the
+    stock regardless of its current level. Voice-note adjustments carry no
+    ``unit``, so it is optional and preserved from the existing item when
+    absent. ``note`` is a member-facing remark carried for the approval UI and
+    never applied. ``extra="forbid"`` for the same cross-household reason as
+    :class:`RecordExpensePayload`.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    quantity: float
-    unit: str
+    quantity: float = 0.0
+    unit: str | None = None
     restock_threshold: float = 0.0
+    out_of_stock: bool = False
+    note: str | None = None
 
 
 async def execute_verb(command: PendingCommand, unit_of_work: UnitOfWorkPort) -> None:
@@ -114,8 +120,10 @@ async def _adjust_pantry_item(
                 id=uuid4().hex,
                 household_id=command.household_id,
                 name=payload.name,
-                quantity=payload.quantity,
-                unit=payload.unit,
+                quantity=0.0 if payload.out_of_stock else payload.quantity,
+                # "pcs" is the fallback unit for voice-staged items, which
+                # never carry one; the next receipt for the item corrects it.
+                unit=payload.unit or "pcs",
                 restock_threshold=payload.restock_threshold,
             )
         else:
@@ -123,8 +131,10 @@ async def _adjust_pantry_item(
             # stock below zero fails here, against current state.
             item = evolve(
                 existing,
-                quantity=existing.quantity + payload.quantity,
-                unit=payload.unit,
+                quantity=0.0
+                if payload.out_of_stock
+                else existing.quantity + payload.quantity,
+                unit=payload.unit or existing.unit,
             )
     except ValueError as error:
         raise InvalidCommandError(str(error)) from error

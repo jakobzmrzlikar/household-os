@@ -7,6 +7,9 @@ one sanctioned exception to the inward dependency rule (ADR-0005/ADR-0009).
 
 from dependency_injector import containers, providers
 
+from app.adapter.output.elevenlabs_speech_transcription import (
+    ElevenLabsSpeechTranscription,
+)
 from app.adapter.output.local_disk_media_storage import LocalDiskMediaStorage
 from app.adapter.output.sqlalchemy_capture_repository import SqlAlchemyCaptureRepository
 from app.adapter.output.sqlalchemy_unit_of_work import SqlAlchemyUnitOfWork
@@ -16,6 +19,7 @@ from app.application.list_pending_commands import ListPendingCommandsUsecase
 from app.application.reject_command import RejectCommandUsecase
 from app.application.run_extraction import RunExtractionUsecase
 from app.domain.agents.receipt_extraction import ReceiptExtractionAgent
+from app.domain.agents.voice_intent_extraction import VoiceIntentExtractionAgent
 from app.infrastructure.database import create_engine, create_session_factory
 from app.infrastructure.llm import create_extraction_model
 from app.infrastructure.settings import Settings
@@ -70,12 +74,23 @@ class Container(containers.DeclarativeContainer):
     extraction_agent = providers.Singleton(
         ReceiptExtractionAgent, model=extraction_model
     )
+    # The voice intent agent reuses the receipt extraction model binding; only
+    # the composition root knows both agents run on the same provider model.
+    pantry_intent_agent = providers.Singleton(
+        VoiceIntentExtractionAgent, model=extraction_model
+    )
+    speech_transcription = providers.Singleton(
+        ElevenLabsSpeechTranscription,
+        api_key=settings.provided.elevenlabs_api_key,
+    )
 
     run_extraction_usecase = providers.Factory(
         RunExtractionUsecase,
         capture_repository=capture_repository,
         media_storage=media_storage,
         extraction_agent=extraction_agent,
+        speech_transcription=speech_transcription,
+        pantry_intent_agent=pantry_intent_agent,
         unit_of_work_factory=unit_of_work.provider,
     )
     create_capture_usecase = providers.Factory(

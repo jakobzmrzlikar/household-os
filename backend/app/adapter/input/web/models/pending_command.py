@@ -20,6 +20,7 @@ class ApiPendingCommand(BaseModel):
     payload: dict[str, object]
     agent_name: str
     model_id: str
+    transcript: str | None
     status: PendingCommandStatus
     created_at: datetime
     decided_by: str | None
@@ -40,6 +41,7 @@ class ApiPendingCommand(BaseModel):
             payload=command.payload,
             agent_name=command.provenance.agent_name,
             model_id=command.provenance.model_id,
+            transcript=command.provenance.transcript,
             status=command.status,
             created_at=command.created_at,
             decided_by=command.decided_by,

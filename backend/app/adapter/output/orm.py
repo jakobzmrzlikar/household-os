@@ -36,6 +36,7 @@ class PendingCommandRecord(Base):
     payload: Mapped[str]
     agent_name: Mapped[str]
     model_id: Mapped[str]
+    transcript: Mapped[str | None]
     status: Mapped[str] = mapped_column(index=True)
     created_at: Mapped[datetime]
     decided_by: Mapped[str | None]

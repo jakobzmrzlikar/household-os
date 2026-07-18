@@ -198,6 +198,79 @@ async def test_approve_command_should_add_delta_when_item_exists(
     assert item.restock_threshold == 1.0
 
 
+async def test_approve_command_should_zero_stock_when_out_of_stock_approved(
+    usecase: ApproveCommandUsecase,
+    pending_command_repository: MockPendingCommandRepository,
+    pantry_item_repository: MockPantryItemRepository,
+) -> None:
+    await pantry_item_repository.upsert(
+        PantryItem(
+            id="item-1",
+            household_id="hh-1",
+            name="Milk",
+            quantity=2.0,
+            unit="l",
+            restock_threshold=1.0,
+        )
+    )
+    await pending_command_repository.add(
+        _command(
+            CommandVerb.ADJUST_PANTRY_ITEM,
+            {"name": "Milk", "out_of_stock": True, "note": "finished this morning"},
+        )
+    )
+
+    await usecase(ApproveCommandRequest(command_id="cmd-1", member_id="mem-1"))
+
+    item = await pantry_item_repository.get("hh-1", "Milk")
+    assert item is not None
+    assert item.quantity == 0.0
+    # The voice-staged payload carries no unit; the existing one is preserved.
+    assert item.unit == "l"
+
+
+async def test_approve_command_should_create_depleted_item_when_out_of_stock_item_new(
+    usecase: ApproveCommandUsecase,
+    pending_command_repository: MockPendingCommandRepository,
+    pantry_item_repository: MockPantryItemRepository,
+) -> None:
+    await pending_command_repository.add(
+        _command(
+            CommandVerb.ADJUST_PANTRY_ITEM,
+            {"name": "Olive oil", "out_of_stock": True},
+        )
+    )
+
+    await usecase(ApproveCommandRequest(command_id="cmd-1", member_id="mem-1"))
+
+    item = await pantry_item_repository.get("hh-1", "Olive oil")
+    assert item is not None
+    assert item.quantity == 0.0
+    assert item.unit == "pcs"
+
+
+async def test_approve_command_should_preserve_unit_when_voice_delta_has_none(
+    usecase: ApproveCommandUsecase,
+    pending_command_repository: MockPendingCommandRepository,
+    pantry_item_repository: MockPantryItemRepository,
+) -> None:
+    await pantry_item_repository.upsert(
+        PantryItem(
+            id="item-1", household_id="hh-1", name="Milk", quantity=2.0, unit="l"
+        )
+    )
+    await pending_command_repository.add(
+        _command(CommandVerb.ADJUST_PANTRY_ITEM, {"name": "Milk", "quantity": -1.0})
+    )
+
+    await usecase(ApproveCommandRequest(command_id="cmd-1", member_id="mem-1"))
+
+    item = await pantry_item_repository.get("hh-1", "Milk")
+    assert item is not None
+    assert item.quantity == 1.0
+    assert item.unit == "l"
+
+
 async def test_approve_command_should_fail_closed_when_delta_drives_stock_negative(
     usecase: ApproveCommandUsecase,
     pending_command_repository: MockPendingCommandRepository,

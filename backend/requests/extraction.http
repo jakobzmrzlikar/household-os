@@ -1,4 +1,4 @@
-### Run extraction on a capture -> { commands: ApiPendingCommand[] }
+### Run extraction on a capture (photo -> receipt, audio -> pantry intents) -> { commands: ApiPendingCommand[] }
 POST {{baseUrl}}/run_extraction
 Content-Type: application/json
 

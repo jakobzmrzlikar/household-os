@@ -32,10 +32,13 @@ class Provenance:
 
     :param agent_name: Name of the agent that produced the proposal.
     :param model_id: Identifier of the model the agent ran on.
+    :param transcript: Transcript of the voice note the proposal was derived
+        from, shown in the approval UI; ``None`` for non-audio captures.
     """
 
     agent_name: str
     model_id: str
+    transcript: str | None = None
 
 
 @define(frozen=True)
@@ -107,10 +110,17 @@ class PendingCommand:
                 if members > 1:
                     summary += f", split between {members} members"
             return summary
-        return (
-            f"Add {self.payload.get('quantity')} {self.payload.get('unit')} "
-            f"of {self.payload.get('name')} to the pantry"
-        )
+        name = self.payload.get("name")
+        if self.payload.get("out_of_stock"):
+            return f"Mark {name} as out of stock in the pantry"
+        quantity = self.payload.get("quantity")
+        unit = self.payload.get("unit")
+        # Voice-note adjustments carry no unit; drop it rather than print None.
+        amount = f"{quantity} {unit}" if unit else f"{quantity}"
+        if isinstance(quantity, int | float) and quantity < 0:
+            amount = f"{-quantity} {unit}" if unit else f"{-quantity}"
+            return f"Remove {amount} of {name} from the pantry"
+        return f"Add {amount} of {name} to the pantry"
 
     def _decided(
         self, status: PendingCommandStatus, member_id: str, decided_at: datetime

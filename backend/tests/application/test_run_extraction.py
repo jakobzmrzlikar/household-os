@@ -11,12 +11,20 @@ from app.adapter.output.mock_extraction_agent import (
     MockExtractionAgent,
 )
 from app.adapter.output.mock_media_storage import MockMediaStorage
+from app.adapter.output.mock_pantry_intent_agent import (
+    AGENT_NAME as INTENT_AGENT_NAME,
+)
+from app.adapter.output.mock_pantry_intent_agent import MockPantryIntentAgent
+from app.adapter.output.mock_pantry_item_repository import MockPantryItemRepository
 from app.adapter.output.mock_pending_command_repository import (
     MockPendingCommandRepository,
 )
+from app.adapter.output.mock_speech_transcription import (
+    TRANSCRIPT,
+    MockSpeechTranscription,
+)
 from app.adapter.output.mock_unit_of_work import MockUnitOfWork
 from app.application.run_extraction import (
-    CaptureNotExtractableError,
     CaptureNotFoundError,
     RunExtractionRequest,
     RunExtractionUsecase,
@@ -45,6 +53,18 @@ def extraction_agent() -> MockExtractionAgent:
 
 
 @pytest.fixture
+def speech_transcription() -> MockSpeechTranscription:
+    """Mock transcription answering with a fixed voice-note transcript."""
+    return MockSpeechTranscription()
+
+
+@pytest.fixture
+def pantry_intent_agent() -> MockPantryIntentAgent:
+    """Mock agent answering with fixed out-of-stock pantry intents."""
+    return MockPantryIntentAgent()
+
+
+@pytest.fixture
 def pending_command_repository() -> MockPendingCommandRepository:
     """Mock repository recording staged commands in memory."""
     return MockPendingCommandRepository()
@@ -63,6 +83,8 @@ def usecase(
     capture_repository: MockCaptureRepository,
     media_storage: MockMediaStorage,
     extraction_agent: MockExtractionAgent,
+    speech_transcription: MockSpeechTranscription,
+    pantry_intent_agent: MockPantryIntentAgent,
     unit_of_work: MockUnitOfWork,
 ) -> RunExtractionUsecase:
     """Use case under test, wired to the in-memory mocks."""
@@ -70,6 +92,8 @@ def usecase(
         capture_repository=capture_repository,
         media_storage=media_storage,
         extraction_agent=extraction_agent,
+        speech_transcription=speech_transcription,
+        pantry_intent_agent=pantry_intent_agent,
         unit_of_work_factory=lambda: unit_of_work,
     )
 
@@ -88,6 +112,27 @@ async def _add_photo_capture(
         household_id="hh-1",
         member_id="mem-1",
         kind=CaptureKind.PHOTO,
+        media_path=media_path,
+        created_at=datetime.now(UTC),
+    )
+    await capture_repository.add(capture)
+    return capture
+
+
+async def _add_audio_capture(
+    capture_repository: MockCaptureRepository, media_storage: MockMediaStorage
+) -> Capture:
+    """Store fake voice-note bytes and record an audio capture over them."""
+    media_path = await media_storage.store(
+        MediaStoreRequest(
+            content=b"fake-m4a", filename="note.m4a", content_type="audio/mp4"
+        )
+    )
+    capture = Capture(
+        id="cap-audio",
+        household_id="hh-1",
+        member_id="mem-1",
+        kind=CaptureKind.AUDIO,
         media_path=media_path,
         created_at=datetime.now(UTC),
     )
@@ -169,34 +214,108 @@ async def test_run_extraction_should_send_stored_image_when_agent_invoked(
     assert extraction_agent.requests[0].media_type == "image/jpeg"
 
 
+async def test_run_extraction_should_stage_pantry_adjustments_when_capture_is_audio(
+    usecase: RunExtractionUsecase,
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+    pantry_intent_agent: MockPantryIntentAgent,
+) -> None:
+    capture = await _add_audio_capture(capture_repository, media_storage)
+
+    commands = await usecase(RunExtractionRequest(capture_id=capture.id))
+
+    assert [command.verb for command in commands] == [
+        CommandVerb.ADJUST_PANTRY_ITEM
+    ] * len(pantry_intent_agent.intents)
+    assert [command.payload for command in commands] == [
+        {"name": intent.name, "out_of_stock": True}
+        for intent in pantry_intent_agent.intents
+    ]
+    assert all(command.capture_id == capture.id for command in commands)
+
+
+async def test_run_extraction_should_stage_inert_rows_when_capture_is_audio(
+    usecase: RunExtractionUsecase,
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+    pending_command_repository: MockPendingCommandRepository,
+    unit_of_work: MockUnitOfWork,
+) -> None:
+    capture = await _add_audio_capture(capture_repository, media_storage)
+
+    commands = await usecase(RunExtractionRequest(capture_id=capture.id))
+
+    # Staged, never executed: the commands sit pending and no pantry state
+    # was written anywhere.
+    assert pending_command_repository.commands == commands
+    assert all(command.status is PendingCommandStatus.PENDING for command in commands)
+    assert isinstance(unit_of_work.pantry_items, MockPantryItemRepository)
+    assert unit_of_work.pantry_items.items == {}
+
+
+async def test_run_extraction_should_carry_transcript_provenance_when_capture_is_audio(
+    usecase: RunExtractionUsecase,
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+) -> None:
+    capture = await _add_audio_capture(capture_repository, media_storage)
+
+    commands = await usecase(RunExtractionRequest(capture_id=capture.id))
+
+    assert all(
+        command.provenance.agent_name == INTENT_AGENT_NAME for command in commands
+    )
+    assert all(command.provenance.transcript == TRANSCRIPT for command in commands)
+
+
+async def test_run_extraction_should_send_stored_audio_when_transcription_invoked(
+    usecase: RunExtractionUsecase,
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+    speech_transcription: MockSpeechTranscription,
+    pantry_intent_agent: MockPantryIntentAgent,
+) -> None:
+    capture = await _add_audio_capture(capture_repository, media_storage)
+
+    await usecase(RunExtractionRequest(capture_id=capture.id))
+
+    assert [request.audio for request in speech_transcription.requests] == [b"fake-m4a"]
+    assert speech_transcription.requests[0].content_type.startswith("audio/")
+    # The transcript flows on into the intent agent unchanged.
+    assert [request.transcript for request in pantry_intent_agent.requests] == [
+        TRANSCRIPT
+    ]
+
+
+async def test_run_extraction_should_stage_nothing_when_voice_note_has_no_intents(
+    capture_repository: MockCaptureRepository,
+    media_storage: MockMediaStorage,
+    pending_command_repository: MockPendingCommandRepository,
+) -> None:
+    usecase = RunExtractionUsecase(
+        capture_repository=capture_repository,
+        media_storage=media_storage,
+        extraction_agent=MockExtractionAgent(),
+        speech_transcription=MockSpeechTranscription(),
+        pantry_intent_agent=MockPantryIntentAgent(intents=()),
+        unit_of_work_factory=lambda: MockUnitOfWork(
+            pending_commands=pending_command_repository
+        ),
+    )
+    capture = await _add_audio_capture(capture_repository, media_storage)
+
+    commands = await usecase(RunExtractionRequest(capture_id=capture.id))
+
+    assert commands == []
+    assert pending_command_repository.commands == []
+
+
 async def test_run_extraction_should_raise_error_when_capture_missing(
     usecase: RunExtractionUsecase,
     pending_command_repository: MockPendingCommandRepository,
 ) -> None:
     with pytest.raises(CaptureNotFoundError):
         await usecase(RunExtractionRequest(capture_id="missing"))
-
-    assert pending_command_repository.commands == []
-
-
-async def test_run_extraction_should_raise_error_when_capture_is_audio(
-    usecase: RunExtractionUsecase,
-    capture_repository: MockCaptureRepository,
-    pending_command_repository: MockPendingCommandRepository,
-) -> None:
-    await capture_repository.add(
-        Capture(
-            id="cap-audio",
-            household_id="hh-1",
-            member_id="mem-1",
-            kind=CaptureKind.AUDIO,
-            media_path="note.m4a",
-            created_at=datetime.now(UTC),
-        )
-    )
-
-    with pytest.raises(CaptureNotExtractableError):
-        await usecase(RunExtractionRequest(capture_id="cap-audio"))
 
     assert pending_command_repository.commands == []
 

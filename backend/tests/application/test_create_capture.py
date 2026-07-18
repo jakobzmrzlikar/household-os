@@ -5,13 +5,16 @@ import pytest
 from app.adapter.output.mock_capture_repository import MockCaptureRepository
 from app.adapter.output.mock_extraction_agent import MockExtractionAgent
 from app.adapter.output.mock_media_storage import MockMediaStorage
+from app.adapter.output.mock_pantry_intent_agent import MockPantryIntentAgent
 from app.adapter.output.mock_pending_command_repository import (
     MockPendingCommandRepository,
 )
+from app.adapter.output.mock_speech_transcription import MockSpeechTranscription
 from app.adapter.output.mock_unit_of_work import MockUnitOfWork
 from app.application.create_capture import CreateCaptureRequest, CreateCaptureUsecase
 from app.application.run_extraction import RunExtractionUsecase
 from app.domain.models.capture import CaptureKind, UnsupportedMediaTypeError
+from app.domain.models.pending_command import CommandVerb
 from app.domain.ports.extraction_agent import (
     ExtractionAgentPort,
     ReceiptExtractionRequest,
@@ -62,6 +65,8 @@ def usecase(
         capture_repository=capture_repository,
         media_storage=media_storage,
         extraction_agent=MockExtractionAgent(),
+        speech_transcription=MockSpeechTranscription(),
+        pantry_intent_agent=MockPantryIntentAgent(),
         unit_of_work_factory=lambda: MockUnitOfWork(
             pending_commands=pending_command_repository
         ),
@@ -115,13 +120,19 @@ async def test_create_capture_should_stage_commands_when_photo_uploaded(
     assert all(command.capture_id == capture.id for command in commands)
 
 
-async def test_create_capture_should_not_run_extraction_when_audio_uploaded(
+async def test_create_capture_should_stage_pantry_commands_when_audio_uploaded(
     usecase: CreateCaptureUsecase,
     pending_command_repository: MockPendingCommandRepository,
 ) -> None:
-    await usecase(_request("audio/m4a", filename="note.m4a"))
+    capture = await usecase(_request("audio/m4a", filename="note.m4a"))
 
-    assert pending_command_repository.commands == []
+    # Voice extraction ran automatically: transcription plus intent extraction
+    # staged one pantry adjustment per intent, nothing more.
+    commands = pending_command_repository.commands
+    assert commands
+    assert all(command.verb is CommandVerb.ADJUST_PANTRY_ITEM for command in commands)
+    assert all(command.capture_id == capture.id for command in commands)
+    assert all(command.provenance.transcript for command in commands)
 
 
 async def test_create_capture_should_persist_capture_when_extraction_fails(
@@ -133,6 +144,8 @@ async def test_create_capture_should_persist_capture_when_extraction_fails(
         capture_repository=capture_repository,
         media_storage=media_storage,
         extraction_agent=ExplodingExtractionAgent(),
+        speech_transcription=MockSpeechTranscription(),
+        pantry_intent_agent=MockPantryIntentAgent(),
         unit_of_work_factory=lambda: MockUnitOfWork(
             pending_commands=pending_command_repository
         ),

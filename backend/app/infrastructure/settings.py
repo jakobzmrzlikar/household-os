@@ -16,6 +16,8 @@ class Settings(BaseSettings):
         backend ``.env`` file here because provider SDKs only look at the
         process environment, which plain ``uvicorn`` does not populate
         from ``.env``.
+    :param elevenlabs_api_key: API key for the ElevenLabs speech-to-text
+        provider, read from ``.env`` for the same reason.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -24,3 +26,4 @@ class Settings(BaseSettings):
     uploads_dir: Path = Path("uploads")
     extraction_model: str = "openai:gpt-5-mini"
     openai_api_key: str | None = None
+    elevenlabs_api_key: str | None = None
